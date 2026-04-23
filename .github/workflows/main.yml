@@ -2,13 +2,15 @@ name: HKJC Hourly Scraper
 
 on:
   schedule:
-    # 每天每兩小時執行一次 (UTC 0, 2, 4... 對應香港 08, 10, 12...)
-    # 為了覆蓋 00:00 AM 到 23:59 PM，建議用最簡單的每兩小時排程
-    - cron: '5 */2 * * *'  # 每兩小時的第 5 分鐘執行 (避免整點擁擠)
+    # 為了覆蓋情境 A 與 B，每 2 小時執行一次
+    - cron: '5 */2 * * *'
   workflow_dispatch:
 
+env:
+  TZ: Asia/Hong_Kong  # 強制使用香港時區
+
 permissions:
-  contents: write         # 提升至全域權限，確保所有步驟都能寫入
+  contents: write
 
 jobs:
   build:
@@ -16,8 +18,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }} # 使用內建 Token 確保驗證成功
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,15 +26,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pandas selenium webdriver-manager lxml html5lib
 
       - name: Run Scraper
         run: python hkjc_scraper.py
 
       - name: Commit and Push
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "github-actions[bot]@://github.com"
           git config --local user.name "github-actions[bot]"
-          git add data/*.csv || echo "No data files to add"
+          git add data/*.csv || echo "No data changes"
           git commit -m "Auto-update odds: $(date +'%Y-%m-%d %H:%M')" || exit 0
-          git push origin main
+          git push
