@@ -2,9 +2,9 @@ name: HKJC Hourly Scraper
 
 on:
   schedule:
-    # 12:30 PM HKT = 04:30 UTC
-    # 每兩小時執行一次，直到晚上 10:30 PM HKT (14:30 UTC)
-    - cron: '30 4-14/2 * * *'
+    # 每天每兩小時執行一次 (UTC 0, 2, 4... 對應香港 08, 10, 12...)
+    # 為了覆蓋 00:00 AM 到 23:59 PM，建議用最簡單的每兩小時排程
+    - cron: '5 */2 * * *'  # 每兩小時的第 5 分鐘執行 (避免整點擁擠)
   workflow_dispatch:
 
 permissions:
