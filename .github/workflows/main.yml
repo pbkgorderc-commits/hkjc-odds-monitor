@@ -2,7 +2,8 @@ name: HKJC Hourly Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每個整點執行一次
+    - cron: '0 */2 * * *'  # 每兩小時執行一次
+    # - cron: '0 * * * *'  # 每個整點執行一次
   workflow_dispatch:      # 允許手動按鈕執行
 
 permissions:
