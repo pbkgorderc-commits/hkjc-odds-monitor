@@ -10,6 +10,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+# 強制初始化時區設定（針對 Linux 環境）
+os.environ['TZ'] = 'Asia/Hong_Kong'
+if hasattr(time, 'tzset'):
+    time.tzset()
+
 def get_driver():
     chrome_options = Options()
     chrome_options.add_argument('--headless')
@@ -20,9 +25,10 @@ def get_driver():
 
 def get_race_info(driver, date_str):
     try:
+        # 修正 URL 拼接，加入馬會賠率頁面的路徑
         url = f"https://hkjc.com{date_str}"
         driver.get(url)
-        time_element = WebDriverWait(driver, 10).until(
+        time_element = WebDriverWait(driver, 8).until(
             EC.presence_of_element_located((By.XPATH, "//td[contains(text(), '開跑時間')]//following-sibling::td"))
         )
         race_time_str = time_element.text.replace(" ", "").strip()
@@ -31,11 +37,9 @@ def get_race_info(driver, date_str):
         return None
 
 def update_index_page():
-    """掃描 data 目錄並更新根目錄的 index.html"""
     if not os.path.exists('data'): return
     
     files = sorted([f for f in os.listdir('data') if f.endswith('.html')], reverse=True)
-    
     links_html = "".join([f'<li><a href="data/{f}">{f.replace("all_odds_", "").replace(".html", "")}</a></li>' for f in files])
     
     index_content = f"""
@@ -44,48 +48,49 @@ def update_index_page():
         <meta charset='UTF-8'>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {{ font-family: sans-serif; margin: 40px; line-height: 1.6; background-color: #f4f4f9; }}
-            h1 {{ color: #004d99; border-bottom: 2px solid #004d99; }}
+            body {{ font-family: -apple-system, sans-serif; margin: 40px; line-height: 1.6; background-color: #f4f4f9; color: #333; }}
+            h1 {{ color: #004d99; border-bottom: 2px solid #004d99; padding-bottom: 10px; }}
             ul {{ list-style: none; padding: 0; }}
-            li {{ background: white; margin: 10px 0; padding: 15px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-            a {{ text-decoration: none; color: #004d99; font-weight: bold; font-size: 1.1em; display: block; }}
+            li {{ background: white; margin: 10px 0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
+            a {{ text-decoration: none; color: #004d99; font-weight: bold; display: block; }}
             a:hover {{ color: #ff6600; }}
+            .time {{ font-size: 0.9em; color: #666; }}
         </style>
     </head>
     <body>
         <h1>🏇 HKJC 賠率數據索引</h1>
-        <p>最後更新時間: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+        <p class="time">最後更新 (HKT): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <ul>{links_html}</ul>
     </body>
     </html>
     """
     with open('index.html', 'w', encoding='utf-8-sig') as f:
         f.write(index_content)
-    print("🏠 索引頁 index.html 已更新")
 
 def scrape():
     driver = get_driver()
-    now = datetime.now()
+    now = datetime.now() # 此時已受 TZ 影響為香港時間
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
     
-    print(f"🚀 啟動時間: {now.strftime('%Y-%m-%d %H:%M')}")
+    print(f"🚀 啟動紀錄 (HKT): {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
     target_date = None
+    # 邏輯判斷：優先看今天是否有賽事
     today_race_time = get_race_info(driver, today_str)
     if today_race_time:
         diff = (today_race_time - now).total_seconds() / 60
-        if diff > 90:
+        if diff > 60: # 開賽前 60 分鐘停止更新，避免抓到封盤數據
             print(f"✅ [情境 B] 抓取今日賽事 ({today_str})")
             target_date = today_str
         else:
-            print(f"🛑 [情境 B] 接近開賽，停止抓取。")
-            driver.quit()
-            return
+            print(f"🛑 [情境 B] 接近開賽或已結束，停止今日抓取。")
 
+    # 如果今天沒賽事，檢查明天
     if not target_date:
         tomorrow_race_time = get_race_info(driver, tomorrow_str)
         if tomorrow_race_time:
+            # 香港時間 12:30 PM 後才開始有明日賠率
             if now.hour > 12 or (now.hour == 12 and now.minute >= 30):
                 print(f"✅ [情境 A] 抓取明日賽事 ({tomorrow_str})")
                 target_date = tomorrow_str
@@ -93,21 +98,20 @@ def scrape():
                 print(f"⏳ [情境 A] 未到 12:30 PM 受注時間。")
 
     if not target_date:
-        print("ℹ️ [情境 C] 無賽事需處理。")
-        update_index_page() # 即使不抓取也更新一下 index 以反映最新狀態
+        print("ℹ️ [情境 C] 目前無受注賽事。")
+        update_index_page()
         driver.quit()
         return
 
     if not os.path.exists('data'): os.makedirs('data')
     
-    # 清理 30 天前舊檔
+    # 清理舊檔 (30天)
     retention_days = 30
-    curr_time = time.time()
     for f in os.listdir('data'):
         f_path = os.path.join('data', f)
-        if os.path.isfile(f_path) and (curr_time - os.path.getmtime(f_path)) / (24 * 3600) > retention_days:
+        if os.path.isfile(f_path) and (time.time() - os.path.getmtime(f_path)) / 86400 > retention_days:
             os.remove(f_path)
-            print(f"   🗑️ 已刪除: {f}")
+            print(f"🗑️ 刪除舊檔: {f}")
 
     venues = ['ST', 'HV']
     capture_time = now.strftime("%Y-%m-%d %H:%M")
@@ -121,7 +125,7 @@ def scrape():
             url = f"https://hkjc.com{target_date}&venue={venue}&raceno={race_num}"
             try:
                 driver.get(url)
-                WebDriverWait(driver, 6).until(EC.presence_of_element_located((By.CLASS_NAME, "oddsTable")))
+                WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, "oddsTable")))
                 dfs = pd.read_html(driver.page_source)
                 df = max(dfs, key=len)
                 df.insert(0, 'Capture_Time', capture_time)
@@ -133,20 +137,9 @@ def scrape():
                 continue
 
         if venue_updated:
-            full_df = pd.read_csv(filename_csv)
-            style = """
-            <style>
-                body { font-family: sans-serif; margin: 20px; background: #f9f9f9; }
-                table { border-collapse: collapse; width: 100%; background: white; }
-                th { background: #004d99; color: white; padding: 10px; position: sticky; top: 0; }
-                td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-                tr:nth-child(even) { background: #f2f2f2; }
-                h2 { color: #004d99; }
-                .back { display: inline-block; margin-bottom: 20px; text-decoration: none; color: #004d99; font-weight: bold; }
-            </style>
-            """
-            back_link = '<a class="back" href="../index.html">⬅ 回到清單</a>'
-            html_content = f"<html><head><meta charset='UTF-8'>{style}</head><body>{back_link}<h2>🏇 {target_date} ({venue}) 賠率表</h2>{full_df.to_html(index=False)}</body></html>"
+            full_df = pd.read_csv(filename_csv).tail(100) # 僅顯示最近期數據
+            style = "<style>body{font-family:sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;}th{background:#004d99;color:white;padding:8px;}td{border:1px solid #ddd;padding:8px;text-align:center;}tr:nth-child(even){background:#f2f2f2;}</style>"
+            html_content = f"<html><head><meta charset='UTF-8'>{style}</head><body><a href='../index.html'>⬅ 返回索引</a><h2>🏇 {target_date} {venue} 數據</h2>{full_df.to_html(index=False)}</body></html>"
             with open(filename_html, 'w', encoding='utf-8-sig') as f:
                 f.write(html_content)
 
