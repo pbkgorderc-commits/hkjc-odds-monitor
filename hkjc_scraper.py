@@ -98,10 +98,14 @@ def scrape():
                 print(f"⏳ [情境 A] 未到 12:30 PM 受注時間。")
 
     if not target_date:
-        print("ℹ️ [情境 C] 目前無受注賽事。")
-        update_index_page()
-        driver.quit()
-        return
+    print("ℹ️ [情境 C] 測試模式：生成一個虛擬檔案。")
+    if not os.path.exists('data'): os.makedirs('data')
+    with open('data/test_file.html', 'w') as f:
+        f.write("<h1>這是測試檔案</h1>")
+    update_index_page()
+    driver.quit()
+    return
+    
 
     if not os.path.exists('data'): os.makedirs('data')
     
