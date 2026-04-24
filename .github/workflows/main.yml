@@ -1,45 +1,41 @@
-name: HKJC Hourly Scraper
+name: HKJC Odds Collector
 
 on:
   schedule:
-    # 使用 UTC 時間設定，對齊香港 (HKT, UTC+8) 的偶數小時:
-    # UTC 16,18,20,22,0,2,4,6,8,10,12,14 
-    # = HKT 00,02,04,06,08,10,12,14,16,18,20,22
-    # 設在第 7 分鐘以避開 GitHub Actions 的整點啟動高峰
-    - cron: '7 0,2,4,6,8,10,12,14,16,18,20,22 * * *'
-  workflow_dispatch: # 允許手動測試觸發
-
-env:
-  TZ: Asia/Hong_Kong
+    # 每小時第 15 分鐘執行 (UTC)
+    - cron: '15 * * * *'
+  workflow_dispatch: # 支援手動啟動
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  scrape:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # 開啟快取加速安裝
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           pip install pandas selenium webdriver-manager lxml html5lib
 
       - name: Run Scraper
         run: python hkjc_scraper.py
 
-      - name: Commit and Push
+      - name: Push Data
         run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add data/*.csv data/*.html index.html || echo "No data changes"
-          # $(date) 會受 env.TZ 影響顯示香港時間
-          git commit -m "Auto-update odds: $(date +'%Y-%m-%d %H:%M')" || exit 0
-          git push
+          git config --local user.email "actions@github.com"
+          git config --local user.name "Github Bot"
+          git add data/*.csv data/*.html index.html || echo "No changes"
+          if git diff --staged --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "Odds Auto-Update: $(date +'%Y-%m-%d %H:%M')"
+            git push
+          fi
