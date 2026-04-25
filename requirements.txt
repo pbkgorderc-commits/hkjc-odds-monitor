@@ -1,4 +1,5 @@
-selenium
 pandas
-webdriver-manager
+requests
+beautifulsoup4
 lxml
+html5lib
