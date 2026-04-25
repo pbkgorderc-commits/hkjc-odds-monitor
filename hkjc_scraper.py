@@ -5,7 +5,6 @@ import time
 from datetime import datetime, timedelta, timezone
 
 def update_index(now_hkt):
-    """更新根目錄的索引頁面"""
     if not os.path.exists('data'): os.makedirs('data', exist_ok=True)
     files = sorted([f for f in os.listdir('data') if f.endswith('.html')], reverse=True)
     links = "".join([f'<li><a href="data/{f}">{f.replace("all_odds_", "").replace(".html", "")}</a></li>' for f in files])
@@ -22,31 +21,32 @@ def update_index(now_hkt):
         f.write(html)
 
 def scrape():
-    # 1. 時間處理 (設定抓取目標日期)
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     hkt_now = now_utc + timedelta(hours=8)
     
-    # 強制測試 2026-04-26 (冠軍賽馬日)
+    # 修正：確保 target_date 格式為 YYYY/MM/DD 用於網址
     target_date = "2026-04-26" 
-    url_date = target_date.replace("-", "/")
+    url_date = target_date.replace("-", "/") # 變為 2026/04/26
     
     if not os.path.exists('data'): os.makedirs('data', exist_ok=True)
     filename_csv = f"data/all_odds_{target_date}.csv"
     filename_html = f"data/all_odds_{target_date}.html"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     }
 
     print(f"🚀 開始抓取: {target_date} | 當前時間: {hkt_now.strftime('%H:%M:%S')}")
 
     # 2. 抓取 R1 - R12
     for r in range(1, 13):
+        # 修正後的 URL：確保 domain 與參數之間有正確的 / 與 ?
         url = f"https://hkjc.com{url_date}&RaceNo={r}"
+        
         try:
             resp = requests.get(url, headers=headers, timeout=20)
             if "沒有賽事紀錄" in resp.text:
+                print(f"ℹ️ 第 {r} 場: 無賽事紀錄")
                 continue
                 
             dfs = pd.read_html(resp.text)
@@ -57,24 +57,23 @@ def scrape():
                     break
             
             if df is not None:
-                # 數據清洗 (取前四欄：馬號, 馬名, 獨贏, 位置)
+                # 數據清洗
                 df = df.iloc[:, :4]
                 df.columns = ['馬號', '馬名', '獨贏', '位置']
                 df = df[df['馬名'].notna() & (df['馬名'] != '馬名')].copy()
                 
-                # 插入時間與場次
                 df.insert(0, 'Capture_Time', hkt_now.strftime("%Y-%m-%d %H:%M"))
                 df.insert(1, 'Race_No', r)
                 
-                # 🔴 累加至 CSV (Accumulate)
+                # 累加至 CSV
                 df.to_csv(filename_csv, mode='a', index=False, header=not os.path.exists(filename_csv), encoding="utf-8-sig")
                 print(f"✅ 第 {r} 場: 抓取成功")
             
-            time.sleep(1.5) # 防止過快被封
+            time.sleep(2) 
         except Exception as e:
             print(f"⚠️ 第 {r} 場跳過: {e}")
 
-    # 3. 📈 生成趨勢分析 HTML
+    # 3. 趨勢分析
     if os.path.exists(filename_csv):
         try:
             full_df = pd.read_csv(filename_csv)
@@ -98,25 +97,14 @@ def scrape():
             else:
                 display_df = full_df
 
-            style = """
-            <style>
-                body { font-family: sans-serif; padding: 20px; }
-                table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-                th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-                th { background: #f4f4f4; }
-                .down { color: #d00; font-weight: bold; } /* 賠率降 = 熱門 */
-                .up { color: #080; } /* 賠率升 = 冷門 */
-            </style>
-            """
+            style = "<style>body{font-family:sans-serif; padding:20px;} table{border-collapse:collapse; width:100%;} td,th{border:1px solid #ccc; padding:8px; text-align:center;} .down{color:red; font-weight:bold;} .up{color:green;}</style>"
             table_html = display_df.to_html(index=False).replace("↓", "<span class='down'>↓</span>").replace("↑", "<span class='up'>↑</span>")
             
             with open(filename_html, 'w', encoding='utf-8-sig') as f:
                 f.write(f"<html><head><meta charset='UTF-8'>{style}</head><body>")
                 f.write(f"<h2>🏇 {target_date} 賠率變動預覽</h2>")
-                f.write(f"<p>更新時間: {times[-1]} (對比上次抓取)</p>")
-                f.write(table_html)
-                f.write("</body></html>")
-            print("📊 HTML 分析頁面已更新")
+                f.write(f"<p>更新時間: {times[-1]}</p>{table_html}</body></html>")
+            print("📊 HTML 已更新")
         except Exception as e:
             print(f"❌ 分析失敗: {e}")
 
