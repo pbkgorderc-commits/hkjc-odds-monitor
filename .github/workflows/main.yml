@@ -2,9 +2,9 @@ name: HKJC Odds Collector
 
 on:
   schedule:
-    # 每小時第 15 分鐘執行 (UTC)
+    # 每小時的第 15 分鐘執行 (UTC)，可自行調整
     - cron: '15 * * * *'
-  workflow_dispatch: # 支援手動啟動
+  workflow_dispatch: # 支援手動啟動測試
 
 permissions:
   contents: write
@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pandas selenium webdriver-manager lxml html5lib
+          pip install pandas requests beautifulsoup4 lxml html5lib
 
       - name: Run Scraper
         run: python hkjc_scraper.py
